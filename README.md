@@ -18,6 +18,12 @@ Goal state is stored per session with the plugin storage API, so it survives res
 
 Requires OpenCode v2 with a compatible `@opencode/plugin`. Built and tested against OpenCode 2.0.27 / `@opencode/plugin@2.0.27`.
 
+From GitHub (no npm publish needed):
+
+```sh
+opencode plugin add github:SwekeR-463/opencode-goal-mode
+```
+
 From a checkout (no build step — OpenCode loads TypeScript directly):
 
 ```jsonc
