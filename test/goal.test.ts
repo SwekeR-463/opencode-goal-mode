@@ -11,18 +11,21 @@ function makeHarness() {
   const prompts: Array<Record<string, any>> = []
   const events: Array<Record<string, any>> = []
   let messages: Array<Record<string, any>> = []
+  let sessionLocation = "/test/workspace"
   let contextHook: ((event: any) => unknown) | undefined
   let command: { execute: (input: any) => Promise<void> } | undefined
   const waiters: Array<() => void> = []
   const wake = () => waiters.splice(0).forEach((resolve) => resolve())
 
   const ctx = {
+    location: { directory: "/test/workspace" },
     storage: {
       get: async (key: string) => store.get(key),
       set: async (key: string, value: unknown) => void store.set(key, value),
       remove: async (key: string) => void store.delete(key),
     },
     session: {
+      get: async (_input?: unknown) => ({ location: { directory: sessionLocation } }),
       hook: async (name: string, callback: (event: any) => unknown) => {
         if (name === "context") contextHook = callback
         return { dispose: async () => {} }
@@ -69,6 +72,9 @@ function makeHarness() {
     },
     setMessages: (next: Array<Record<string, any>>) => {
       messages = next
+    },
+    setSessionLocation: (dir: string) => {
+      sessionLocation = dir
     },
     goal: () => store.get("goal/s1") as Record<string, any> | undefined,
     contextHook: () => contextHook,
@@ -156,21 +162,22 @@ test("an earlier /goal status request does not turn later requests into status r
   assert.ok(!system.some((part) => part.text.includes("only asks for persistent goal status")))
 })
 
-test("an idle turn queues one continuation and the completion marker ends the goal", async (t) => {
+test("a completed turn queues one continuation and the completion marker ends the goal", async (t) => {
   const h = makeHarness()
   const cleanup = await plugin.setup(h.ctx)
   t.after(() => cleanup?.())
 
   await h.run("/goal Ship the plugin")
   h.setMessages([userMessage("keep going"), assistantMessage("Still working on it.")])
-  h.push({ type: "session.idle", data: { sessionID: "s1" } })
+  // The server signals end-of-turn with execution.succeeded; session.idle is never emitted.
+  h.push({ type: "session.execution.succeeded", data: { sessionID: "s1" } })
 
   await until(() => h.prompts.length === 2, "a continuation prompt")
   assert.equal(h.prompts[1].delivery, "queue")
   assert.match(String(h.prompts[1].text), /Continue the saved goal/)
 
   h.setMessages([userMessage("keep going"), assistantMessage("All done.\n<goal-complete>")])
-  h.push({ type: "session.idle", data: { sessionID: "s1" } })
+  h.push({ type: "session.execution.succeeded", data: { sessionID: "s1" } })
 
   await until(() => h.goal()?.status === "complete", "goal completion")
   assert.equal(h.prompts.length, 2)
@@ -183,8 +190,22 @@ test("a provider error pauses the goal instead of continuing", async (t) => {
 
   await h.run("/goal Ship the plugin")
   h.setMessages([userMessage("keep going"), assistantMessage("", { error: { type: "provider", message: "boom" } })])
-  h.push({ type: "session.idle", data: { sessionID: "s1" } })
+  h.push({ type: "session.execution.succeeded", data: { sessionID: "s1" } })
 
   await until(() => h.goal()?.status === "paused", "goal pause on error")
+  assert.equal(h.prompts.length, 1)
+})
+
+test("only the instance for the session's own location continues", async (t) => {
+  const h = makeHarness()
+  const cleanup = await plugin.setup(h.ctx)
+  t.after(() => cleanup?.())
+
+  await h.run("/goal Ship the plugin")
+  h.setSessionLocation("/somewhere/else")
+  h.setMessages([userMessage("keep going"), assistantMessage("Still working on it.")])
+  h.push({ type: "session.execution.succeeded", data: { sessionID: "s1" } })
+
+  await new Promise((resolve) => setTimeout(resolve, 60))
   assert.equal(h.prompts.length, 1)
 })

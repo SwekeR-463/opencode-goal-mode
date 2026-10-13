@@ -173,11 +173,19 @@ export default Plugin.define({
     void (async () => {
       try {
         for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
-          if (event.type !== "session.idle") continue
+          // The server signals the end of a turn with execution.succeeded; session.idle is in
+          // the protocol types but is never emitted, so it cannot drive continuation.
+          if (event.type !== "session.execution.succeeded") continue
           const sessionID = event.data.sessionID
           if (inFlight.has(sessionID)) continue
           inFlight.add(sessionID)
           try {
+            // Every location loads its own plugin instance, all instances receive the server-wide
+            // event stream, and goal storage is shared, so only the instance for the session's own
+            // location may act or a continuation would be queued more than once.
+            const session = await ctx.session.get({ sessionID })
+            if (session.location.directory !== ctx.location.directory) continue
+
             const goal = await getGoal(sessionID)
             if (!goal || goal.status !== "active") continue
 
