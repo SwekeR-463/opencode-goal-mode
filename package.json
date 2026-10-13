@@ -1,0 +1,31 @@
+{
+  "name": "opencode-goal-mode",
+  "version": "0.1.0",
+  "description": "Persistent goal mode for OpenCode: set a goal and the agent keeps working across turns until it is complete or blocked.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "goal",
+    "goal-mode"
+  ],
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.ts",
+    "check": "npm run typecheck && npm test"
+  },
+  "dependencies": {
+    "@opencode/plugin": "2.0.27"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2"
+  }
+}
