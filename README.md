@@ -10,7 +10,17 @@ Persistent goal mode for [OpenCode](https://opencode.ai): set a goal for a sessi
 - `/goal clear` — forget the goal.
 - `/goal set <objective>` — only needed when the objective starts with a reserved word (`status`, `pause`, `resume`, `clear`, `set`).
 
-The agent signals completion by ending its final response with `<goal-complete>` on its own line, or with `<goal-blocked>` when genuinely stuck. When a turn ends without either marker, the plugin queues one continuation prompt. Each goal allows at most 12 auto-continuations; on the cap, or on a provider error, the goal stops itself instead of looping forever.
+The agent signals completion by ending its final response with `<goal-complete>` on its own line, or with `<goal-blocked>` when genuinely stuck. When a turn ends without either marker, the plugin queues one continuation prompt. Each goal allows at most **50 auto-continuations** by default; on the cap the goal pauses at `limit` and posts a notice instead of going quiet (resume with `/goal resume`, which resets the counter), and on a provider error the goal pauses itself instead of looping forever.
+
+Configure the cap with plugin options:
+
+```jsonc
+{
+  "plugins": [
+    { "package": "github:SwekeR-463/opencode-goal-mode", "options": { "maxContinuations": 200 } }
+  ]
+}
+```
 
 Goal state is stored per session with the plugin storage API, so it survives restarts.
 

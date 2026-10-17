@@ -9,6 +9,7 @@ const MARKER = "[[GOAL_STATUS_ONLY]]"
 function makeHarness() {
   const store = new Map<string, unknown>()
   const prompts: Array<Record<string, any>> = []
+  const synthetics: Array<Record<string, any>> = []
   const events: Array<Record<string, any>> = []
   let messages: Array<Record<string, any>> = []
   let sessionLocation = "/test/workspace"
@@ -32,6 +33,7 @@ function makeHarness() {
       },
       prompt: async (input: Record<string, any>) => void prompts.push(input),
       context: async () => messages,
+      synthetic: async (input: Record<string, any>) => void synthetics.push(input),
     },
     command: {
       transform: async (callback: (editor: any) => void) => {
@@ -66,6 +68,7 @@ function makeHarness() {
     ctx: ctx as unknown as Ctx,
     store,
     prompts,
+    synthetics,
     push: (event: Record<string, any>) => {
       events.push(event)
       wake()
@@ -194,6 +197,24 @@ test("a provider error pauses the goal instead of continuing", async (t) => {
 
   await until(() => h.goal()?.status === "paused", "goal pause on error")
   assert.equal(h.prompts.length, 1)
+})
+
+test("the continuation cap pauses the goal and posts a visible notice", async (t) => {
+  const h = makeHarness()
+  ;(h.ctx as any).options = { maxContinuations: 1 }
+  const cleanup = await plugin.setup(h.ctx)
+  t.after(() => cleanup?.())
+
+  await h.run("/goal Ship the plugin")
+  h.setMessages([userMessage("keep going"), assistantMessage("Still working on it.")])
+  h.push({ type: "session.execution.succeeded", data: { sessionID: "s1" } })
+  await until(() => h.prompts.length === 2, "the first continuation")
+  h.push({ type: "session.execution.succeeded", data: { sessionID: "s1" } })
+
+  await until(() => h.goal()?.status === "limit", "goal limit")
+  assert.equal(h.prompts.length, 2)
+  assert.equal(h.synthetics.length, 1)
+  assert.match(String(h.synthetics[0].text), /cap of 1 auto-continuations/)
 })
 
 test("only the instance for the session's own location continues", async (t) => {

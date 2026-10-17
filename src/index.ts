@@ -3,7 +3,7 @@ import { Plugin } from "@opencode/plugin"
 type GoalStatus = "active" | "paused" | "complete" | "blocked" | "limit"
 type GoalState = { objective: string; status: GoalStatus; continuations: number }
 
-const MAX_CONTINUATIONS = 12
+const DEFAULT_MAX_CONTINUATIONS = 50
 const STATUS_ONLY_MARKER = "[[GOAL_STATUS_ONLY]]"
 const COMPLETE_MARKER = "<goal-complete>"
 const BLOCKED_MARKER = "<goal-blocked>"
@@ -39,6 +39,9 @@ export default Plugin.define({
   id: "goal-mode",
   async setup(ctx) {
     const inFlight = new Set<string>()
+    const requestedMax = Number(ctx.options?.maxContinuations)
+    const maxContinuations =
+      Number.isSafeInteger(requestedMax) && requestedMax > 0 ? requestedMax : DEFAULT_MAX_CONTINUATIONS
     const getGoal = async (sessionID: string) => {
       const value = await ctx.storage.get(keyFor(sessionID))
       return isGoalState(value) ? value : undefined
@@ -85,7 +88,7 @@ export default Plugin.define({
           ", auto-continuations " +
           goal.continuations +
           "/" +
-          MAX_CONTINUATIONS +
+          maxContinuations +
           "):\n" +
           goal.objective +
           "\n" +
@@ -127,7 +130,7 @@ export default Plugin.define({
                 "; auto-continuations: " +
                 current.continuations +
                 "/" +
-                MAX_CONTINUATIONS +
+                maxContinuations +
                 "; objective: " +
                 current.objective
               : "No goal is saved. Start one with /goal <objective>."
@@ -216,9 +219,22 @@ export default Plugin.define({
               await saveGoal(sessionID, goal)
               continue
             }
-            if (goal.continuations >= MAX_CONTINUATIONS) {
+            if (goal.continuations >= maxContinuations) {
               goal.status = "limit"
               await saveGoal(sessionID, goal)
+              // Surface the stop in the conversation instead of going quiet: the
+              // goal is intact and /goal resume resets the counter.
+              try {
+                await ctx.session.synthetic({
+                  sessionID,
+                  text:
+                    "Goal mode reached its cap of " +
+                    maxContinuations +
+                    " auto-continuations. The goal is paused at \"limit\" - use /goal resume to continue, or /goal status to inspect it.",
+                })
+              } catch (error) {
+                console.error("[goal-mode] Could not post the limit notice for session " + sessionID, error)
+              }
               continue
             }
 
